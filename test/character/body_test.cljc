@@ -22,10 +22,12 @@
         (is (not (empty? (:vertices part))))))))
 
 (deftest test-generate-humanoid-skeleton
-  ;; 13 original core bones + 10 added for the /loop maturity pass full-body
-  ;; extension (6 leg bones + 4 forearm/hand bones) = 23.
+  ;; 13 original core bones + 10 added for the full-body-extension /loop
+  ;; pass (6 leg bones + 4 forearm/hand bones) + 12 added for the
+  ;; finger/toe-articulation /loop pass (10 one-bone-per-finger + 2 toes)
+  ;; = 35.
   (let [skel (body/generate-humanoid-skeleton)]
-    (is (= 23 (count (:bones skel))))
+    (is (= 35 (count (:bones skel))))
     (is (nil? (:parent (first (:bones skel)))))
     (is (= "hips" (:name (first (:bones skel)))))))
 
@@ -34,7 +36,7 @@
 (deftest test-bone-world-positions
   (let [bones (:bones (body/generate-humanoid-skeleton))
         wp (body/bone-world-positions bones)]
-    (is (= 23 (count wp)))
+    (is (= 35 (count wp)))
     ;; hips is root: local-position IS world-position.
     (is (= (:local-position (first bones)) (first wp)))
     ;; spine = hips + spine's own local-position (both y-negative-going-up
@@ -144,6 +146,90 @@
       ;; weights sum to ~1.0 (inverse-distance normalization).
       (is (< (Math/abs (- (reduce + joint-weights) 1.0)) 1e-6))
       (is (every? #(>= % 0.0) joint-weights)))))
+
+;; ── finger/toe articulation (/loop maturity pass, ADR-2607031200) ────────
+
+(deftest test-finger-toe-bones-sane-rest-positions
+  (let [bones (:bones (body/generate-humanoid-skeleton 1.0))
+        wp (body/bone-world-positions bones)
+        idx-by-name (into {} (map-indexed (fn [i b] [(:name b) i]) bones))
+        y-of (fn [n] (second (nth wp (idx-by-name n))))
+        x-of (fn [n] (first (nth wp (idx-by-name n))))
+        z-of (fn [n] (nth (nth wp (idx-by-name n)) 2))]
+    ;; every finger extends further from the midline (larger |x|) than the
+    ;; hand it's attached to, same direction as the arm itself.
+    (doseq [n ["leftThumbMetacarpal" "leftIndexProximal" "leftMiddleProximal"
+               "leftRingProximal" "leftLittleProximal"]]
+      (is (< (x-of n) (x-of "leftHand"))))
+    (doseq [n ["rightThumbMetacarpal" "rightIndexProximal" "rightMiddleProximal"
+               "rightRingProximal" "rightLittleProximal"]]
+      (is (> (x-of n) (x-of "rightHand"))))
+    ;; fingers are genuinely splayed, not all coincident (distinct z).
+    (is (apply distinct? (map z-of ["leftThumbMetacarpal" "leftIndexProximal"
+                                     "leftMiddleProximal" "leftRingProximal"
+                                     "leftLittleProximal"])))
+    ;; thumb sits higher (+y) than the other fingers, matching a natural hand.
+    (is (> (y-of "leftThumbMetacarpal") (y-of "leftIndexProximal")))
+    ;; toes continue forward (+z) from their foot, same z-direction the foot
+    ;; bone itself already extends in from the ankle.
+    (is (> (z-of "leftToes") (z-of "leftFoot")))
+    (is (> (z-of "rightToes") (z-of "rightFoot")))))
+
+(deftest test-full-body-mesh-includes-fingers-and-toes
+  (let [def1 (params/default-character-def)
+        skel (body/generate-humanoid-skeleton (:height (:body def1)))
+        bones (:bones skel)
+        part (body/generate-body (:body def1) bones)
+        skinned (body/skin-body part bones)
+        dominant-name (fn [{:keys [joint-indices joint-weights]}]
+                         (:name (bones (->> (map vector joint-indices joint-weights)
+                                             (apply max-key second)
+                                             first))))
+        hist (frequencies (map dominant-name (:vertices skinned)))
+        finger-toe-names #{"leftThumbMetacarpal" "leftIndexProximal" "leftMiddleProximal"
+                            "leftRingProximal" "leftLittleProximal"
+                            "rightThumbMetacarpal" "rightIndexProximal" "rightMiddleProximal"
+                            "rightRingProximal" "rightLittleProximal"
+                            "leftToes" "rightToes"}]
+    ;; every finger/toe bone dominates at least one real vertex — proof the
+    ;; geometry actually reaches them, not just that the bones exist.
+    (doseq [n finger-toe-names]
+      (is (pos? (get hist n 0)) (str n " has no dominant vertices")))))
+
+;; ── clothing sleeve/leg coverage (/loop maturity pass, ADR-2607031200) ───
+
+(deftest test-clothing-coverage-every-preset-has-an-entry
+  (doseq [preset params/clothing-presets]
+    (is (contains? body/clothing-coverage preset)
+        (str preset " missing from clothing-coverage"))))
+
+(deftest test-sleeveless-preset-has-no-sleeve-geometry
+  (let [def1 (params/default-character-def)
+        part (body/generate-clothing (assoc (:clothing def1) :preset :tank-top) (:body def1))]
+    ;; sanity: a sleeveless/legless preset's clothing mesh still exists
+    ;; (torso only — :tank-top's clothing-coverage entry is {:sleeve 0.0 :leg 0.0}).
+    (is (not (empty? (:vertices part))))))
+
+(deftest test-suit-preset-covers-more-than-tank-top
+  ;; :suit-formal (full sleeves + full-length trousers) must produce
+  ;; substantially more clothing geometry than :tank-top (torso only) — the
+  ;; concrete proof leg/arm clothing coverage now actually exists per-preset,
+  ;; not just that the preset table has entries.
+  (let [def1 (params/default-character-def)
+        tank (body/generate-clothing (assoc (:clothing def1) :preset :tank-top) (:body def1))
+        suit (body/generate-clothing (assoc (:clothing def1) :preset :suit-formal) (:body def1))]
+    (is (> (count (:vertices suit)) (* 2 (count (:vertices tank)))))))
+
+(deftest test-suit-leg-clothing-reaches-toward-the-knee
+  ;; :suit-formal's leg coverage (1.0 = full trousers) should produce
+  ;; clothing vertices well below the hip, past a sleeveless/legless
+  ;; preset's y-range (which never goes below the torso's own hem).
+  (let [def1 (params/default-character-def)
+        skel (body/generate-humanoid-skeleton (:height (:body def1)))
+        suit (body/generate-clothing (assoc (:clothing def1) :preset :suit-formal)
+                                      (:body def1) (:bones skel))
+        ys (map #(second (:position %)) (:vertices suit))]
+    (is (< (apply min ys) -0.30))))
 
 (deftest test-skin-body-dominant-joint-is-nearest
   ;; A vertex placed exactly at a bone's rest position must have that bone

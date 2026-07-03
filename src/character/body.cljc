@@ -89,26 +89,48 @@
 
 (def identity-rot [0.0 0.0 0.0 1.0])
 
+;; Finger/toe fidelity (/loop maturity pass, follow-up to the full-body
+;; work): VRM 1.0's real humanoid table has up to 3 joints x 5 fingers per
+;; hand (`leftThumbMetacarpal/Proximal/Distal`, `leftIndexProximal/
+;; Intermediate/Distal`, etc. — 15 bones/hand, `vrm.vrm-types`'s bone table)
+;; and no standard toe joints at all (only a single `leftToes`/`rightToes`
+;; per foot). A full 15-bone-per-hand rig is disproportionate for this
+;; stylized low-poly avatar (30 finger bones would nearly triple the
+;; skeleton for geometry nobody will see move individually at this mesh
+;; resolution) — so this uses ONE bone per finger (`*Proximal`, the real
+;; VRM name for a finger's first joint; thumb's real first joint is
+;; `*ThumbMetacarpal`, used here for the same reason) rather than the full
+;; 3-joint chain. This is a documented simplification, same honesty
+;; convention as the auto-skinning/ARKit-bridge work earlier this session:
+;; fingers/toes get real, splayed rest geometry and are individually
+;; bindable/posable, just not further sub-articulated per knuckle.
+
 (defn generate-humanoid-skeleton
   "Generate a VRM 1.0-compatible humanoid skeleton: the original 13 core
   bones (hips through eyes/jaw/shoulders/upper-arms, torso proportions
-  unscaled by `height` — unchanged from before this fn grew a `height` arg)
-  plus, new for the /loop maturity pass (ADR-2607031200), 10 more so the
-  figure is a real standing body instead of a bust: `leftUpperLeg`/
-  `leftLowerLeg`/`leftFoot` + their `right*` mirrors (children of `hips`),
-  and `leftLowerArm`/`leftHand` + their `right*` mirrors (children of
-  `leftUpperArm`/`rightUpperArm`, bones 10/12). Limb SEGMENT LENGTHS scale
-  with `height` (arg, default `1.0` for the pre-existing 0-arity callers);
-  attachment points (hips/shoulders) keep their original fixed offsets,
-  matching how the torso mesh already only height-scales its vertical
-  extent, not its attachment. Bone-name strings are the real VRM 1.0
-  humanoid names (`vrm.vrm-types/str->human-bone-name`'s table), not
-  invented — so `character-creator.pipeline`'s VRMC_vrm humanoid mapping
-  picks them up unchanged."
+  unscaled by `height` — unchanged from before this fn grew a `height` arg),
+  10 more from an earlier /loop pass so the figure is a real standing body
+  instead of a bust (`leftUpperLeg`/`leftLowerLeg`/`leftFoot` + `right*`
+  mirrors, children of `hips`; `leftLowerArm`/`leftHand` + `right*` mirrors,
+  children of `leftUpperArm`/`rightUpperArm`, bones 10/12), and now 12 more
+  (this pass) for finger/toe articulation: one bone per finger — `left
+  {Thumb,Index,Middle,Ring,Little}Proximal` + `right*` mirrors (10 bones,
+  children of `leftHand`=20/`rightHand`=22) — and `leftToes`/`rightToes`
+  (2 bones, children of `leftFoot`=15/`rightFoot`=18). See the fidelity note
+  above for why fingers stop at one joint instead of VRM's full 3.  Limb
+  SEGMENT LENGTHS scale with `height` (arg, default `1.0` for the
+  pre-existing 0-arity callers); attachment points (hips/shoulders) keep
+  their original fixed offsets, matching how the torso mesh already only
+  height-scales its vertical extent, not its attachment. Bone-name strings
+  are the real VRM 1.0 humanoid names (`vrm.vrm-types/str->human-bone-name`'s
+  table), not invented — so `character-creator.pipeline`'s VRMC_vrm humanoid
+  mapping picks them up unchanged."
   ([] (generate-humanoid-skeleton 1.0))
   ([height]
    (let [thigh (* 0.11 height) shin (* 0.10 height) foot 0.06
-         upper-arm-ext (* 0.10 height) forearm (* 0.09 height)]
+         upper-arm-ext (* 0.10 height) forearm (* 0.09 height)
+         fx (* 0.030 height)   ;; finger length, along the hand's own extension axis
+         tz (* 0.045 height)]  ;; toe length, continuing the foot's forward (+z) axis
      {:bones
       [(bone "hips" nil [0.0 -0.2 0.0] identity-rot)
        (bone "spine" 0 [0.0 0.08 0.0] identity-rot)
@@ -134,7 +156,26 @@
        (bone "leftLowerArm" 10 [(- upper-arm-ext) 0.0 0.0] identity-rot)
        (bone "leftHand" 19 [(- forearm) 0.0 0.0] identity-rot)
        (bone "rightLowerArm" 12 [upper-arm-ext 0.0 0.0] identity-rot)
-       (bone "rightHand" 21 [forearm 0.0 0.0] identity-rot)]})))
+       (bone "rightHand" 21 [forearm 0.0 0.0] identity-rot)
+       ;; idx 23-27: left-hand fingers (children of leftHand = 20), splayed
+       ;; across z (front/back) with thumb offset up (+y) and shorter, same
+       ;; "spread along the hand-width axis" convention `leftFoot`'s own +z
+       ;; offset already establishes for "forward."
+       (bone "leftThumbMetacarpal" 20 [(- (* fx 0.7)) (* fx 0.5) (* fx 0.9)] identity-rot)
+       (bone "leftIndexProximal" 20 [(- fx) 0.0 (* fx 0.55)] identity-rot)
+       (bone "leftMiddleProximal" 20 [(- (* fx 1.05)) 0.0 0.0] identity-rot)
+       (bone "leftRingProximal" 20 [(- fx) 0.0 (- (* fx 0.55))] identity-rot)
+       (bone "leftLittleProximal" 20 [(- (* fx 0.85)) 0.0 (- (* fx 1.0))] identity-rot)
+       ;; idx 28-32: right-hand fingers (children of rightHand = 22), mirrored (+x)
+       (bone "rightThumbMetacarpal" 22 [(* fx 0.7) (* fx 0.5) (* fx 0.9)] identity-rot)
+       (bone "rightIndexProximal" 22 [fx 0.0 (* fx 0.55)] identity-rot)
+       (bone "rightMiddleProximal" 22 [(* fx 1.05) 0.0 0.0] identity-rot)
+       (bone "rightRingProximal" 22 [fx 0.0 (- (* fx 0.55))] identity-rot)
+       (bone "rightLittleProximal" 22 [(* fx 0.85) 0.0 (- (* fx 1.0))] identity-rot)
+       ;; idx 33-34: toes (children of leftFoot = 15 / rightFoot = 18),
+       ;; continuing the foot's own +z ("forward") direction.
+       (bone "leftToes" 15 [0.0 0.0 tz] identity-rot)
+       (bone "rightToes" 18 [0.0 0.0 tz] identity-rot)]})))
 
 ;; ── skinning (ADR-2607031200, /loop maturity pass) ───────────────────────
 ;; `generate-body`'s mesh had no vertex skin weights (no JOINTS_0/WEIGHTS_0),
@@ -256,19 +297,60 @@
         q (m/quat-from-axis-angle [0.0 0.0 1.0] (* side (/ m/pi 2.0)))]
     (rotate-translate-mesh-part {:vertices vertices :indices indices} q upper-arm-world)))
 
+(defn- finger-mesh
+  "One finger: a short tapering cylinder, same rotate-about-Z technique as
+  `arm-mesh` (`side` `-1`=left/`+1`=right) so it points away from the palm
+  along world +/-X, translated to the finger bone's own world position (its
+  y/z spread — thumb up-and-forward, others fanned front-to-back — already
+  comes from `generate-humanoid-skeleton`'s per-finger local offsets via
+  `bone-world-positions`, so this mesh itself only needs to extend along the
+  hand's own extension axis, not reproduce the spread)."
+  [side finger-world]
+  (let [len 0.026
+        y-fn (fn [t] (- (* t len)))
+        radius-fn (fn [t] (let [r (- 0.007 (* t 0.003))] [r r]))
+        [vertices indices] (ring-mesh 3 6 y-fn radius-fn)
+        q (m/quat-from-axis-angle [0.0 0.0 1.0] (* side (/ m/pi 2.0)))]
+    (rotate-translate-mesh-part {:vertices vertices :indices indices} q finger-world)))
+
+(defn- toe-mesh
+  "One foot's toes: a short tapering cylinder rotated 90 degrees about X (so
+  local `+Y` maps to world `+Z`, continuing `leftFoot`/`rightFoot`'s own
+  forward offset), translated to the `leftToes`/`rightToes` bone's world
+  position. No left/right mirroring needed for the rotation itself (both
+  feet point the same way, +Z) — only the bone's own world x differs."
+  [toes-world]
+  (let [len 0.035
+        y-fn (fn [t] (- (* t len)))
+        radius-fn (fn [t] (let [r (- 0.020 (* t 0.010))] [r r]))
+        [vertices indices] (ring-mesh 3 8 y-fn radius-fn)
+        q (m/quat-from-axis-angle [1.0 0.0 0.0] (/ m/pi 2.0))]
+    (rotate-translate-mesh-part {:vertices vertices :indices indices} q toes-world)))
+
+(def ^:private left-finger-names
+  ["leftThumbMetacarpal" "leftIndexProximal" "leftMiddleProximal"
+   "leftRingProximal" "leftLittleProximal"])
+(def ^:private right-finger-names
+  ["rightThumbMetacarpal" "rightIndexProximal" "rightMiddleProximal"
+   "rightRingProximal" "rightLittleProximal"])
+
 (defn generate-body
-  "Generate a full standing-body mesh (torso + 2 legs + 2 arms, merged into
-  one `MeshPart` named `\"body\"`) — extended (/loop maturity pass,
-  ADR-2607031200) from the original neck+upper-body-only bust. `params` is
-  a `BodyParams` map (`:height`/`:shoulder-width`/`:build`/`:neck-
-  thickness`, unchanged shape). `bones` (2-arity; defaults to
-  `(:bones (generate-humanoid-skeleton (:height params)))` in the 1-arity
-  form, matching the original call convention) supplies the hip/shoulder
-  attachment points legs/arms are placed relative to — geometry and
-  skeleton share one source of truth instead of duplicating hardcoded
-  offsets. Reuses `ring-mesh` for every limb (no second revolve-mesh
-  implementation); arms use `rotate-translate-mesh-part` to redirect the
-  same vertical cylinder sideways rather than a differently-shaped builder."
+  "Generate a full standing-body mesh (torso + 2 legs + 2 arms + 10 fingers
+  + 2 toes, merged into one `MeshPart` named `\"body\"`) — extended (/loop
+  maturity pass, ADR-2607031200) from the original neck+upper-body-only
+  bust, then again (a later /loop pass) with finger/toe geometry (see
+  `generate-humanoid-skeleton`'s fidelity note — one bone/mesh per finger,
+  not VRM's full 3-joint chain). `params` is a `BodyParams` map (`:height`/
+  `:shoulder-width`/`:build`/`:neck-thickness`, unchanged shape). `bones`
+  (2-arity; defaults to `(:bones (generate-humanoid-skeleton (:height
+  params)))` in the 1-arity form, matching the original call convention)
+  supplies every attachment point (hips/shoulders/hands/feet) the limbs and
+  digits are placed relative to — geometry and skeleton share one source of
+  truth instead of duplicating hardcoded offsets. Reuses `ring-mesh` for
+  every part (no second revolve-mesh implementation); arms/fingers use
+  `rotate-translate-mesh-part` to redirect the same vertical cylinder
+  sideways, toes redirect it forward, rather than differently-shaped
+  builders per limb."
   ([params] (generate-body params (:bones (generate-humanoid-skeleton (:height params)))))
   ([{:keys [build height] :as params} bones]
    (let [bwp (bone-world-positions bones)
@@ -278,29 +360,116 @@
          l-leg (leg-mesh build height (at "hips") -0.045)
          r-leg (leg-mesh build height (at "hips") 0.045)
          l-arm (arm-mesh -1.0 build height (at "leftUpperArm"))
-         r-arm (arm-mesh 1.0 build height (at "rightUpperArm"))]
-     (merge-mesh-parts "body" :skin [torso l-leg r-leg l-arm r-arm]))))
+         r-arm (arm-mesh 1.0 build height (at "rightUpperArm"))
+         l-fingers (mapv #(finger-mesh -1.0 (at %)) left-finger-names)
+         r-fingers (mapv #(finger-mesh 1.0 (at %)) right-finger-names)
+         l-toes (toe-mesh (at "leftToes"))
+         r-toes (toe-mesh (at "rightToes"))]
+     (merge-mesh-parts "body" :skin
+                        (into [torso l-leg r-leg l-arm r-arm l-toes r-toes]
+                              (into l-fingers r-fingers))))))
+
+(defn- sleeve-mesh
+  "One sleeve: the same tapering-cylinder technique `arm-mesh` uses, offset
+  slightly outward (`offset`, the clothing fit gap) and shortened to
+  `coverage` (0..1 fraction of the FULL arm's length — `0` = no sleeve at
+  all/tank-top; `~0.35` = short sleeve to mid-upper-arm; `1.0` = long sleeve
+  to the wrist), translated to the same `leftUpperArm`/`rightUpperArm`
+  attachment point `arm-mesh` uses. Tapers proportionally to how far along
+  the FULL arm's own taper the sleeve's own end sits (`coverage`-scaled),
+  so a short sleeve's cuff radius matches what the real arm's radius is at
+  that point, not the full arm's wrist radius. Returns `nil` for
+  `coverage<=0` (no mesh to draw) rather than a degenerate cylinder."
+  [side build height offset upper-arm-world coverage]
+  (when (pos? coverage)
+    (let [len (* 0.19 height coverage)
+          y-fn (fn [t] (- (* t len)))
+          radius-fn (fn [t]
+                      (let [r (+ (- 0.030 (* t 0.011 coverage)) offset)]
+                        [(+ r (* build 0.007)) (+ r (* build 0.007))]))
+          [vertices indices] (ring-mesh 8 14 y-fn radius-fn)
+          q (m/quat-from-axis-angle [0.0 0.0 1.0] (* side (/ m/pi 2.0)))]
+      (rotate-translate-mesh-part {:vertices vertices :indices indices} q upper-arm-world))))
+
+(defn- leg-clothing-mesh
+  "Leg clothing (skirt/dress hem or full trousers): the same technique as
+  `leg-mesh`, offset outward and shortened to `coverage` (0..1 fraction of
+  the FULL leg's length — `0` = no coverage; `~0.45` = skirt/dress length to
+  mid-thigh; `1.0` = full-length trousers), translated to the matching hip
+  attachment `leg-mesh` uses. Returns `nil` for `coverage<=0`."
+  [build height offset hip-world hip-x-local coverage]
+  (when (pos? coverage)
+    (let [len (* 0.21 height coverage)
+          y-fn (fn [t] (- (* t len)))
+          radius-fn (fn [t]
+                      (let [r (+ (- 0.045 (* t 0.016 coverage)) offset)]
+                        [(+ r (* build 0.012)) (+ r (* build 0.012))]))
+          [vertices indices] (ring-mesh 10 16 y-fn radius-fn)]
+      (offset-mesh-part {:vertices vertices :indices indices}
+                         (m/vec3+ hip-world [hip-x-local 0.0 0.0])))))
+
+(def clothing-coverage
+  "`preset -> {:sleeve <0..1 fraction of arm length> :leg <0..1 fraction of
+  leg length>}` — real-world garment norms (tank-top has no sleeve, a suit
+  has full-length sleeves+trousers, a casual dress is a sleeveless mid-thigh
+  skirt, ...), a documented approximation rather than a spec, same honesty
+  convention as this file's auto-skinning/torso-span work earlier this
+  session. Closes the gap the previous /loop pass explicitly left open
+  ('legs/arms added to generate-body are not yet covered by any clothing
+  preset') — 6 of `character.params/clothing-presets`' 11 entries
+  (`:dress-casual` `:dress-formal` `:suit-casual` `:suit-formal`
+  `:uniform-school` `:uniform-military`) previously fell through to the
+  generic default torso coverage with no distinguishing sleeve/leg
+  behavior at all; every preset in the closed enum gets a real entry here."
+  {:tank-top          {:sleeve 0.0  :leg 0.0}
+   :nude-shoulders    {:sleeve 0.0  :leg 0.0}
+   :t-shirt           {:sleeve 0.35 :leg 0.0}
+   :blouse            {:sleeve 0.6  :leg 0.0}
+   :hoodie            {:sleeve 1.0  :leg 0.0}
+   :jacket            {:sleeve 1.0  :leg 0.0}
+   :dress-casual      {:sleeve 0.0  :leg 0.45}
+   :dress-formal      {:sleeve 0.35 :leg 0.6}
+   :suit-casual       {:sleeve 1.0  :leg 1.0}
+   :suit-formal       {:sleeve 1.0  :leg 1.0}
+   :uniform-school    {:sleeve 0.6  :leg 0.45}
+   :uniform-military  {:sleeve 1.0  :leg 1.0}})
 
 (defn generate-clothing
-  "Generate clothing mesh (slightly offset from body, torso region only —
-  legs/arms added to `generate-body` this session are not yet covered by
-  any clothing preset; out of scope for the /loop maturity pass that added
-  them). `params` is a ClothingParams map, `body` a BodyParams map."
-  [{:keys [preset fit]} {:keys [shoulder-width height build] :as _body}]
-  (let [n-rings 16 n-seg 24
-        offset (+ 0.004 (* fit 0.003))
-        shoulder-w (+ 0.1 (* shoulder-width 0.08) offset)
-        [start-t coverage]
-        (case preset
-          (:tank-top :nude-shoulders) [0.35 0.65]
-          (:t-shirt :blouse) [0.25 0.75]
-          (:hoodie :jacket) [0.15 0.85]
-          [0.25 0.75])
-        y-fn (fn [t] (let [tt (+ start-t (* coverage t))] (- 0.08 (* tt 0.28 height))))
-        radius-fn (fn [t]
-                    (let [tt (+ start-t (* coverage t))
-                          rx (+ (if (< tt 0.5) (* shoulder-w tt 2.0) (+ shoulder-w (* (- tt 0.5) 0.02))) offset)
-                          rz (+ 0.08 (* build 0.03) offset)]
-                      [rx rz]))
-        [vertices indices] (ring-mesh n-rings n-seg y-fn radius-fn)]
-    {:name "clothing" :vertices vertices :indices indices :material :clothing}))
+  "Generate clothing (torso + optional sleeves + optional leg coverage,
+  merged into one `MeshPart` named `\"clothing\"`). `params` is a
+  ClothingParams map, `body` a BodyParams map. `bones` (3-arity; defaults to
+  `(:bones (generate-humanoid-skeleton (:height body)))` in the 2-arity
+  form, matching `generate-body`'s own default-arity convention) supplies
+  the shoulder/hip attachment points sleeves/legs are placed relative to.
+  Sleeve/leg coverage per preset comes from `clothing-coverage`, above —
+  extended (/loop maturity pass, ADR-2607031200) from an earlier pass that
+  only ever generated torso coverage, regardless of preset."
+  ([params body] (generate-clothing params body (:bones (generate-humanoid-skeleton (:height body)))))
+  ([{:keys [preset fit]} {:keys [shoulder-width height build] :as _body} bones]
+   (let [n-rings 16 n-seg 24
+         offset (+ 0.004 (* fit 0.003))
+         shoulder-w (+ 0.1 (* shoulder-width 0.08) offset)
+         [start-t coverage]
+         (case preset
+           (:tank-top :nude-shoulders) [0.35 0.65]
+           (:t-shirt :blouse) [0.25 0.75]
+           (:hoodie :jacket) [0.15 0.85]
+           [0.25 0.75])
+         y-fn (fn [t] (let [tt (+ start-t (* coverage t))] (- 0.08 (* tt 0.28 height))))
+         radius-fn (fn [t]
+                     (let [tt (+ start-t (* coverage t))
+                           rx (+ (if (< tt 0.5) (* shoulder-w tt 2.0) (+ shoulder-w (* (- tt 0.5) 0.02))) offset)
+                           rz (+ 0.08 (* build 0.03) offset)]
+                       [rx rz]))
+         [vertices indices] (ring-mesh n-rings n-seg y-fn radius-fn)
+         torso {:vertices vertices :indices indices}
+         {:keys [sleeve leg]} (get clothing-coverage preset {:sleeve 0.0 :leg 0.0})
+         bwp (bone-world-positions bones)
+         idx-by-name (into {} (map-indexed (fn [i b] [(:name b) i]) bones))
+         at (fn [n] (nth bwp (idx-by-name n)))
+         l-sleeve (sleeve-mesh -1.0 build height offset (at "leftUpperArm") sleeve)
+         r-sleeve (sleeve-mesh 1.0 build height offset (at "rightUpperArm") sleeve)
+         l-leg-cl (leg-clothing-mesh build height offset (at "hips") -0.045 leg)
+         r-leg-cl (leg-clothing-mesh build height offset (at "hips") 0.045 leg)
+         parts (remove nil? [torso l-sleeve r-sleeve l-leg-cl r-leg-cl])]
+     (merge-mesh-parts "clothing" :clothing parts))))

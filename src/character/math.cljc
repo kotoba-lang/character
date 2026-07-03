@@ -17,6 +17,14 @@
 (defn sin [x] #?(:clj (Math/sin x) :cljs (js/Math.sin x)))
 (defn cos [x] #?(:clj (Math/cos x) :cljs (js/Math.cos x)))
 (defn acos [x] #?(:clj (Math/acos x) :cljs (js/Math.acos x)))
+;; Java's Math/signum has no JS equivalent by that name (Math.signum is not a
+;; function in browsers/Node — only Math.sign is); a bare `(Math/signum x)`
+;; compiles in cljs to a literal, nonexistent `Math.signum(x)` call and throws
+;; at runtime. `Math/signum` also differs from `Math/sign` for `-0.0`/`NaN`
+;; (returns `-0.0`/`NaN` unchanged rather than `0`) but callers here (blendshape
+;; width offsets) only ever pass ordinary finite face-mesh coordinates, so the
+;; distinction doesn't matter in practice.
+(defn signum [x] #?(:clj (Math/signum (double x)) :cljs (js/Math.sign x)))
 (def pi #?(:clj Math/PI :cljs js/Math.PI))
 
 ;; ── Vec3 ──────────────────────────────────────

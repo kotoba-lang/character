@@ -70,12 +70,13 @@
         head-uvs (base-mesh/frontal-uv head-verts)
         head-vertices (vec (map-indexed (fn [i pos] {:position pos :normal (nth head-normals i) :uv (nth head-uvs i)}) head-verts))
         eye-parts (base-mesh/generate-eyes (:eyes def))
+        eyebrow-parts (base-mesh/generate-eyebrows (:brows def))
         hair-part (hair/generate-hair (:hair def))
         skeleton (body/generate-humanoid-skeleton (:height (:body def)))
         body-part (body/skin-body (body/generate-body (:body def) (:bones skeleton)) (:bones skeleton))
         clothing-part (body/generate-clothing (:clothing def) (:body def))
         expression-targets (blendshape/generate-arkit-targets head-verts)
         head-part {:name "head" :vertices head-vertices :indices indices :material :skin}
-        parts (into [head-part] eye-parts)
+        parts (into [head-part] (concat eye-parts eyebrow-parts))
         parts (conj parts hair-part body-part clothing-part)]
     {:parts parts :skeleton skeleton :blendshape-targets expression-targets}))

@@ -41,3 +41,28 @@
     (doseq [part eye-parts]
       (is (not (empty? (:vertices part))))
       (is (not (empty? (:indices part)))))))
+
+(deftest test-generate-eyebrows
+  (let [def1 (params/default-character-def)
+        parts (base-mesh/generate-eyebrows (:brows def1))]
+    (is (= 2 (count parts)))
+    (is (= #{"eyebrow_l" "eyebrow_r"} (set (map :name parts))))
+    (is (= #{:eyebrow} (set (map :material parts))))
+    (doseq [{:keys [vertices indices]} parts]
+      (is (not (empty? vertices)))
+      (is (not (empty? indices)))
+      (doseq [{[x y z] :position} vertices]
+        (is (and (Double/isFinite x) (Double/isFinite y) (Double/isFinite z)))))
+    ;; brow-ridge anchor (character.blendshape/targets-spec): y around 0.066-0.068,
+    ;; |x| between the inner (~0.014) and outer (~0.048-0.05) brow anchors.
+    (doseq [{:keys [vertices]} parts]
+      (doseq [{[x y _z] :position} vertices]
+        (is (< 0.05 y 0.08))
+        (is (< 0.01 (Math/abs (double x)) 0.06))))
+    ;; left/right are mirrored about x=0
+    (let [l (first (filter #(= "eyebrow_l" (:name %)) parts))
+          r (first (filter #(= "eyebrow_r" (:name %)) parts))
+          lx (mapv #(first (:position %)) (:vertices l))
+          rx (mapv #(first (:position %)) (:vertices r))]
+      (is (every? neg? lx))
+      (is (every? pos? rx)))))

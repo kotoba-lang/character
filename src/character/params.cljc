@@ -25,6 +25,34 @@
     :uniform-school :uniform-military
     :nude-shoulders})
 
+(def body-presets
+  "Named quick-pick body-type presets, analogous to `hair-presets`/
+  `clothing-presets` (a validation set of keyword ids) plus
+  `resolve-body-preset` (below) as the value-table, mirroring how
+  `character.hair/preset-config` resolves `hair-presets`' keywords to
+  concrete generation values. `character-creator.app`'s existing
+  continuous body sliders are unaffected — a preset is a quick starting
+  point a user can still fine-tune with the sliders afterward, same
+  relationship the hair carousel already has to raw `:hair` params (not
+  wired into the app in this pass; that's `kami-app-character-creator`'s
+  own follow-up)."
+  #{:petite :slim :average :athletic :heavy :tall})
+
+(defn resolve-body-preset
+  "`body-presets` keyword -> a `{:height :build :shoulder-width
+  :neck-thickness}` map (the same shape `default-character-def`'s `:body`
+  already uses, so `(update character-def :body merge (resolve-body-preset
+  k))` drops straight in). `:average` matches `default-character-def`'s
+  existing `:body` values exactly, so switching to `:average` is a no-op."
+  [preset]
+  (case preset
+    :petite         {:height 0.85 :build 0.20 :shoulder-width 0.30 :neck-thickness 0.28}
+    :slim           {:height 1.0  :build 0.15 :shoulder-width 0.32 :neck-thickness 0.28}
+    :average        {:height 1.0  :build 0.30 :shoulder-width 0.40 :neck-thickness 0.35}
+    :athletic       {:height 1.0  :build 0.55 :shoulder-width 0.55 :neck-thickness 0.45}
+    :heavy          {:height 0.98 :build 0.85 :shoulder-width 0.60 :neck-thickness 0.55}
+    :tall           {:height 1.15 :build 0.40 :shoulder-width 0.45 :neck-thickness 0.38}))
+
 (defn default-character-def
   "Default: young feminine character matching the reference photo."
   []

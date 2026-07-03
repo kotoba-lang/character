@@ -15,3 +15,20 @@
 
 (deftest test-clothing-presets-count
   (is (= 12 (count params/clothing-presets))))
+
+(deftest test-body-presets-resolve
+  (is (= 6 (count params/body-presets)))
+  (doseq [preset params/body-presets]
+    (let [resolved (params/resolve-body-preset preset)]
+      (is (= #{:height :build :shoulder-width :neck-thickness} (set (keys resolved))))
+      (doseq [v (vals resolved)]
+        (is (number? v))
+        (is (< 0.0 v 2.0))))))
+
+(deftest test-average-body-preset-matches-default
+  (is (= (:body (params/default-character-def))
+         (params/resolve-body-preset :average))))
+
+(deftest test-body-presets-are-distinct
+  (let [resolved (map params/resolve-body-preset params/body-presets)]
+    (is (= (count params/body-presets) (count (distinct resolved))))))

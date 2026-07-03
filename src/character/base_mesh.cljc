@@ -193,6 +193,55 @@
           (range n-rings)))]
     [verts indices]))
 
+(defn generate-eyebrows
+  "Generate eyebrow meshes (a thin arc-shaped strip per side). `params` is
+  a BrowParams map (`:thickness :arch-height :spacing :angle`, plus
+  `:color` which `character.material/for-part`'s `:eyebrow` case does not
+  yet consume — it currently tints eyebrows from `:hair :color` instead;
+  a real but pre-existing gap this fn doesn't attempt to fix, since fixing
+  it means changing `for-part`'s arity and its cross-repo call site in
+  `kami-app-character-creator`, out of scope here). Anchored at the SAME
+  brow-ridge coordinates `character.blendshape`'s `targets-spec` already
+  established (`browInnerUp` x=+-0.014 y=0.068, `browOuterUp*` x=+-0.050
+  y=0.066, `browDown*` x=+-0.032 y=0.068) rather than re-deriving head
+  topology blind — so a real eyebrow's rest shape lines up with where the
+  brow-raise/brow-lower expression morphs already push vertices. Returns a
+  vector of 2 MeshPart maps (`eyebrow_l`/`eyebrow_r`, `:material :eyebrow`
+  — that material id already existed in `character/material.cljc` and
+  `character.material-ids`, unused until now: this fn is what was missing,
+  not the material)."
+  [{:keys [thickness arch-height spacing angle] :or {thickness 0.5 arch-height 0.5 spacing 0.5 angle 0.5}}]
+  (let [n-seg 6
+        base-y 0.068
+        z 0.071
+        inner-x0 (+ 0.014 (* spacing 0.006))
+        outer-x0 (+ 0.048 (* spacing 0.006))
+        arch (+ 0.002 (* arch-height 0.007))
+        tilt (* (- angle 0.5) 0.014)
+        half-thick (+ 0.0009 (* thickness 0.0022))]
+    (vec
+     (mapcat
+      (fn [side]
+        (let [suffix (if (neg? side) "l" "r")
+              pts (for [seg (range n-seg)]
+                    (let [t (/ (double seg) (dec n-seg))
+                          x-local (+ inner-x0 (* t (- outer-x0 inner-x0)))
+                          x (* side x-local)
+                          y (+ base-y (* arch (m/sin (* m/pi t))) (* tilt t))]
+                      [x y z]))
+              vertices
+              (vec (mapcat (fn [[x y z]]
+                             [{:position [x (+ y half-thick) z] :normal [0.0 0.0 1.0] :uv [0.0 0.0]}
+                              {:position [x (- y half-thick) z] :normal [0.0 0.0 1.0] :uv [0.0 1.0]}])
+                           pts))
+              indices
+              (vec (mapcat (fn [seg]
+                             (let [i (* seg 2)]
+                               [i (+ i 2) (+ i 1) (+ i 1) (+ i 2) (+ i 3)]))
+                           (range (dec n-seg))))]
+          [{:name (str "eyebrow_" suffix) :vertices vertices :indices indices :material :eyebrow}]))
+      [-1.0 1.0]))))
+
 (defn generate-eyes
   "Generate eye meshes (white + iris + pupil per side). `params` is an
   EyeParams map. Returns a vector of MeshPart maps."

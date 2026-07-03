@@ -71,11 +71,11 @@
         head-vertices (vec (map-indexed (fn [i pos] {:position pos :normal (nth head-normals i) :uv (nth head-uvs i)}) head-verts))
         eye-parts (base-mesh/generate-eyes (:eyes def))
         hair-part (hair/generate-hair (:hair def))
-        body-part (body/generate-body (:body def))
+        skeleton (body/generate-humanoid-skeleton)
+        body-part (body/skin-body (body/generate-body (:body def)) (:bones skeleton))
         clothing-part (body/generate-clothing (:clothing def) (:body def))
         expression-targets (blendshape/generate-arkit-targets (count head-verts))
         head-part {:name "head" :vertices head-vertices :indices indices :material :skin}
         parts (into [head-part] eye-parts)
-        parts (conj parts hair-part body-part clothing-part)
-        skeleton (body/generate-humanoid-skeleton)]
+        parts (conj parts hair-part body-part clothing-part)]
     {:parts parts :skeleton skeleton :blendshape-targets expression-targets}))

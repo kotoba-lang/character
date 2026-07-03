@@ -73,7 +73,7 @@
         hair-part (hair/generate-hair (:hair def))
         body-part (body/generate-body (:body def))
         clothing-part (body/generate-clothing (:clothing def) (:body def))
-        expression-targets (blendshape/generate-arkit-targets (count head-verts))
+        expression-targets (blendshape/generate-arkit-targets head-verts)
         head-part {:name "head" :vertices head-vertices :indices indices :material :skin}
         parts (into [head-part] eye-parts)
         parts (conj parts hair-part body-part clothing-part)

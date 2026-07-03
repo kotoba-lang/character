@@ -7,19 +7,48 @@
 
 (defn- ring-mesh
   "Shared ring/cylinder mesh builder used by both body and clothing:
-  `radius-fn` takes `t` (ring progress 0..1) and returns `[rx rz]`."
+  `radius-fn` takes `t` (ring progress 0..1) and returns `[rx rz]`.
+
+  Normals (/loop maturity pass, visual-quality follow-up): the previous
+  version used a purely circumferential normal (`[cos theta, 0, sin theta]`)
+  for every ring regardless of how the profile actually tapers — correct
+  for a straight cylinder, but wrong (never tilts) wherever `radius-fn`/
+  `y-fn` actually narrows or widens (every real body part here). This
+  computes a real surface-of-revolution normal via `cross(tangent_theta,
+  tangent_t)`, where `tangent_t` is a central-difference estimate of how
+  `[rx rz y]` changes along `t` (numeric, since `radius-fn`/`y-fn` are
+  opaque closures with no analytic derivative available) — so the normal
+  correctly leans across a taper instead of staying perfectly radial. This
+  does not by itself fix visible faceting (that's segment/ring COUNT,
+  addressed at each call site below); it fixes normals being subtly WRONG
+  on every tapered surface, which independently softens/corrects shading."
   [n-rings n-seg y-fn radius-fn]
-  (let [vertices
+  (let [eps 1e-4
+        vertices
         (vec
          (for [i (range (inc n-rings))
                :let [t (/ (double i) n-rings)
                      y (y-fn t)
-                     [rx rz] (radius-fn t)]
+                     [rx rz] (radius-fn t)
+                     t0 (max 0.0 (- t eps)) t1 (min 1.0 (+ t eps))
+                     dt (- t1 t0)
+                     [rx0 rz0] (radius-fn t0) [rx1 rz1] (radius-fn t1)
+                     y0 (y-fn t0) y1 (y-fn t1)
+                     drx-dt (/ (- rx1 rx0) dt) drz-dt (/ (- rz1 rz0) dt) dy-dt (/ (- y1 y0) dt)]
                j (range (inc n-seg))]
            (let [theta (* 2.0 m/pi (/ (double j) n-seg))
-                 x (* rx (m/cos theta))
-                 z (* rz (m/sin theta))
-                 n (m/vec3-normalize [(m/cos theta) 0.0 (m/sin theta)])]
+                 cos-t (m/cos theta) sin-t (m/sin theta)
+                 x (* rx cos-t) z (* rz sin-t)
+                 ;; cross(tangent_theta, tangent_t), tangent_theta =
+                 ;; [-rx*sin, 0, rz*cos] (unit-circle tangent), tangent_t =
+                 ;; [drx-dt*cos, dy-dt, drz-dt*sin] (finite-difference
+                 ;; meridional tangent) -- reduces to the old purely-radial
+                 ;; normal exactly when drx-dt = drz-dt = 0 (a true
+                 ;; cylinder), and correctly tilts otherwise.
+                 c1 (- (* rz cos-t dy-dt))
+                 c2 (+ (* rz drx-dt cos-t cos-t) (* rx drz-dt sin-t sin-t))
+                 c3 (- (* rx sin-t dy-dt))
+                 n (m/vec3-normalize [c1 c2 c3])]
              {:position [x y z] :normal n :uv [(/ (double j) n-seg) t]})))
         indices
         (vec
@@ -242,20 +271,28 @@
 
 ;; ── body mesh: torso + legs + arms (full standing figure) ────────────────
 
-(defn- torso-mesh
-  "Torso ring-mesh: `t=0` (top) at neck-bone height (`0.08`, world) down to
-  `t=1` (bottom) at hip-bone height (`0.08 - 0.28*height` = `-0.20` when
-  `height=1.0` — exactly the hips bone's world y). Before the /loop
-  maturity pass this spanned `[-0.12, -0.12-0.28*height]`, i.e. neck down to
-  waist-ish, which never reached `chest`/`upperChest` (both above `-0.12`) —
-  the real cause of the original 'almost every vertex's dominant bone is
-  hips or spine' finding. Shifting the span up by `0.20` (same `0.28`
-  height-coefficient, so the total drop is unchanged) makes the torso
-  actually cover the chest/upperChest/shoulder bones it visually should."
+(defn- torso-profile
+  "The torso's `{:y-fn :t-at-y :radius-fn}` as reusable pure functions —
+  factored out of `torso-mesh` (/loop maturity pass, visual-quality
+  follow-up) so `leg-mesh`/`arm-mesh` can sample the torso's own local
+  surface radius at their attachment height and blend their root cross-
+  section into it (see those fns' docstrings) instead of butting an
+  independent cylinder against the torso with an abrupt radius jump — the
+  'floating disconnected limb' seam a screenshot review flagged. `t-at-y`
+  inverts the (linear) `y-fn` directly rather than searching, since `y-fn`'s
+  exact form is known here; if `y-fn` ever becomes non-linear, this needs a
+  real root-find instead.
+
+  `t=0` (top) is neck-bone height (`0.08`, world), `t=1` (bottom) is hip-
+  bone height (`0.08 - 0.28*height` = `-0.20` when `height=1.0` — exactly
+  the hips bone's world y — this specific span was itself a /loop maturity
+  pass fix, shifting from an earlier `[-0.12, ...]` span that never reached
+  `chest`/`upperChest`, see git history)."
   [{:keys [neck-thickness shoulder-width build height]}]
   (let [neck-thick (+ 0.035 (* neck-thickness 0.02))
         shoulder-w (+ 0.1 (* shoulder-width 0.08))
         y-fn (fn [t] (- 0.08 (* t 0.28 height)))
+        t-at-y (fn [y] (max 0.0 (min 1.0 (/ (- 0.08 y) (* 0.28 height)))))
         radius-fn (fn [t]
                     (cond
                       (< t 0.2) [(+ neck-thick (* t 0.06)) (+ (* neck-thick 0.85) (* t 0.05))]
@@ -264,21 +301,80 @@
                                    (+ (* neck-thick 0.85) 0.01 (* s 0.1))])
                       :else (let [s (- t 0.5)]
                               [(+ shoulder-w (* s 0.02) (* build 0.02))
-                               (+ 0.08 (* build 0.03) (* s 0.01))])))
-        [vertices indices] (ring-mesh 20 28 y-fn radius-fn)]
+                               (+ 0.08 (* build 0.03) (* s 0.01))])))]
+    {:y-fn y-fn :t-at-y t-at-y :radius-fn radius-fn}))
+
+(defn- torso-mesh
+  [params]
+  (let [{:keys [y-fn radius-fn]} (torso-profile params)
+        ;; n-seg 28->32 (/loop maturity-pass visual-quality follow-up): more
+        ;; circumference segments = smaller angular gap between adjacent
+        ;; vertex normals = less visible faceting under Gouraud shading,
+        ;; the single biggest lever on the 'faceted plastic' look besides
+        ;; the seam-blending below. n-rings unchanged (28 already gave a
+        ;; reasonably smooth vertical taper; the visible faceting was
+        ;; circumferential).
+        [vertices indices] (ring-mesh 20 32 y-fn radius-fn)]
     {:vertices vertices :indices indices}))
+
+(defn- blend-root-radius
+  "Wraps `base-radius-fn` so its `[rx rz]` output blends FROM `[root-rx
+  root-rz]` (the torso's own local surface radius at the limb's attachment
+  point) TO the limb's normal profile over the first `blend-frac` of its
+  length — a cheap 'shoulder cap'/'hip fillet' via pure radius blending (no
+  extra geometry, no true vertex welding across the torso/limb seam) that
+  visually closes the abrupt cylinder-butted-against-torso gap a screenshot
+  review flagged ('disconnected floating arm segments'). A genuinely welded
+  seam would need the limb and torso to share topology outright — out of
+  scope for this pass; this is a documented approximation, same honesty
+  convention as this file's auto-skinning/clothing-coverage work.
+
+  Clamps `root-rx`/`root-rz` to at most 1.6x the limb's OWN root radius
+  (`base-radius-fn 0.0`) — real bug fix, caught by an actual before/after
+  screenshot comparison, not assumed: `arm-mesh` rotates its cylinder 90
+  degrees about Z before placement, which maps the cylinder's LOCAL rx axis
+  onto WORLD Y (vertical), not world X — so blending directly toward the
+  torso's (rx, rz) half-widths (dimensioned for the torso's own, unrotated
+  X/Z cross-section) produced an oversized, wrongly-oriented flare/collar
+  at the shoulder instead of a subtle cap. The clamp bounds the fillet to a
+  physically reasonable size regardless of the caller's rotation, at the
+  cost of not perfectly matching the torso's exact local radius when that
+  radius is much larger than the limb itself (an acceptable approximation
+  here, not a precise weld)."
+  [base-radius-fn root-rx root-rz blend-frac]
+  (let [[base-rx0 base-rz0] (base-radius-fn 0.0)
+        cap-rx (* 1.6 base-rx0) cap-rz (* 1.6 base-rz0)
+        root-rx' (min root-rx cap-rx) root-rz' (min root-rz cap-rz)]
+    (fn [t]
+      (let [[bx bz] (base-radius-fn t)]
+        (if (< t blend-frac)
+          (let [s (/ t blend-frac)]
+            [(+ (* root-rx' (- 1.0 s)) (* bx s))
+             (+ (* root-rz' (- 1.0 s)) (* bz s))])
+          [bx bz])))))
 
 (defn- leg-mesh
   "One leg: a tapering vertical cylinder from hip level (`t=0`) down through
   the (implicit) knee to the ankle (`t=1`), translated out to `hip-x` (the
   matching `leftUpperLeg`/`rightUpperLeg` bone's world x). Length
   `thigh+shin` matches `generate-humanoid-skeleton`'s leg bone offsets so
-  the mesh's ankle and the `*Foot` bone land at roughly the same height."
-  [build height hip-world hip-x-local]
-  (let [len (* 0.21 height)
+  the mesh's ankle and the `*Foot` bone land at roughly the same height.
+  Root cross-section blends from the torso's own local radius at hip height
+  (see `blend-root-radius`) over the first quarter of the leg's length."
+  [params hip-world hip-x-local]
+  (let [{:keys [build height]} params
+        len (* 0.21 height)
         y-fn (fn [t] (- (* t len)))
-        radius-fn (fn [t] (let [r (- 0.045 (* t 0.016))] [(+ r (* build 0.012)) (+ r (* build 0.012))]))
-        [vertices indices] (ring-mesh 10 16 y-fn radius-fn)]
+        base-radius-fn (fn [t] (let [r (- 0.045 (* t 0.016))] [(+ r (* build 0.012)) (+ r (* build 0.012))]))
+        {:keys [t-at-y radius-fn]} (torso-profile params)
+        [root-rx root-rz] (radius-fn (t-at-y (nth hip-world 1)))
+        radius-fn' (blend-root-radius base-radius-fn root-rx root-rz 0.25)
+        ;; n-rings 10->14 / n-seg 16->22 (/loop maturity-pass visual-quality
+        ;; follow-up): the old 16-segment cylinder read as clearly
+        ;; octagonal/hexagonal at this radius; more rings also gives the
+        ;; root-radius blend above room to look like a smooth taper rather
+        ;; than a single hard step.
+        [vertices indices] (ring-mesh 14 22 y-fn radius-fn')]
     (offset-mesh-part {:vertices vertices :indices indices}
                        (m/vec3+ hip-world [hip-x-local 0.0 0.0]))))
 
@@ -288,12 +384,18 @@
   maps to `+X` — verified against this file's own left=`-X`/right=`+X`
   convention, e.g. `leftShoulder`'s `-0.04`) before being translated to the
   `leftUpperArm`/`rightUpperArm` bone's world position (the shoulder-to-
-  elbow attachment point)."
-  [side build height upper-arm-world]
-  (let [len (* 0.19 height)
+  elbow attachment point). Root cross-section blends from the torso's own
+  local radius at shoulder height, same technique as `leg-mesh`."
+  [side params upper-arm-world]
+  (let [{:keys [build height]} params
+        len (* 0.19 height)
         y-fn (fn [t] (- (* t len)))
-        radius-fn (fn [t] (let [r (- 0.030 (* t 0.011))] [(+ r (* build 0.007)) (+ r (* build 0.007))]))
-        [vertices indices] (ring-mesh 8 14 y-fn radius-fn)
+        base-radius-fn (fn [t] (let [r (- 0.030 (* t 0.011))] [(+ r (* build 0.007)) (+ r (* build 0.007))]))
+        {:keys [t-at-y radius-fn]} (torso-profile params)
+        [root-rx root-rz] (radius-fn (t-at-y (nth upper-arm-world 1)))
+        radius-fn' (blend-root-radius base-radius-fn root-rx root-rz 0.3)
+        ;; n-rings 8->12 / n-seg 14->20, same rationale as leg-mesh above.
+        [vertices indices] (ring-mesh 12 20 y-fn radius-fn')
         q (m/quat-from-axis-angle [0.0 0.0 1.0] (* side (/ m/pi 2.0)))]
     (rotate-translate-mesh-part {:vertices vertices :indices indices} q upper-arm-world)))
 
@@ -309,7 +411,10 @@
   (let [len 0.026
         y-fn (fn [t] (- (* t len)))
         radius-fn (fn [t] (let [r (- 0.007 (* t 0.003))] [r r]))
-        [vertices indices] (ring-mesh 3 6 y-fn radius-fn)
+        ;; n-seg 6->8 (/loop maturity-pass visual-quality follow-up): a
+        ;; hexagonal prism at this radius was visibly faceted even for
+        ;; geometry this small; kept modest since 10 fingers add up fast.
+        [vertices indices] (ring-mesh 3 8 y-fn radius-fn)
         q (m/quat-from-axis-angle [0.0 0.0 1.0] (* side (/ m/pi 2.0)))]
     (rotate-translate-mesh-part {:vertices vertices :indices indices} q finger-world)))
 
@@ -323,7 +428,7 @@
   (let [len 0.035
         y-fn (fn [t] (- (* t len)))
         radius-fn (fn [t] (let [r (- 0.020 (* t 0.010))] [r r]))
-        [vertices indices] (ring-mesh 3 8 y-fn radius-fn)
+        [vertices indices] (ring-mesh 3 10 y-fn radius-fn) ;; n-seg 8->10, same rationale as finger-mesh
         q (m/quat-from-axis-angle [1.0 0.0 0.0] (/ m/pi 2.0))]
     (rotate-translate-mesh-part {:vertices vertices :indices indices} q toes-world)))
 
@@ -357,10 +462,10 @@
          idx-by-name (into {} (map-indexed (fn [i b] [(:name b) i]) bones))
          at (fn [n] (nth bwp (idx-by-name n)))
          torso (torso-mesh params)
-         l-leg (leg-mesh build height (at "hips") -0.045)
-         r-leg (leg-mesh build height (at "hips") 0.045)
-         l-arm (arm-mesh -1.0 build height (at "leftUpperArm"))
-         r-arm (arm-mesh 1.0 build height (at "rightUpperArm"))
+         l-leg (leg-mesh params (at "hips") -0.045)
+         r-leg (leg-mesh params (at "hips") 0.045)
+         l-arm (arm-mesh -1.0 params (at "leftUpperArm"))
+         r-arm (arm-mesh 1.0 params (at "rightUpperArm"))
          l-fingers (mapv #(finger-mesh -1.0 (at %)) left-finger-names)
          r-fingers (mapv #(finger-mesh 1.0 (at %)) right-finger-names)
          l-toes (toe-mesh (at "leftToes"))

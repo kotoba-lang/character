@@ -29,7 +29,7 @@
                x)
            cheek-y (max 0.0 (- 1.0 (Math/pow (/ (- y 0.01) 0.03) 2)))
            x (if (> cheek-y 0.0)
-               (+ x (* (Math/signum (double x)) (- cheekbone-width 0.5) 0.01 cheek-y))
+               (+ x (* (m/signum x) (- cheekbone-width 0.5) 0.01 cheek-y))
                x)
            y (if (> y 0.08)
                (let [t (min 1.0 (/ (- y 0.08) 0.04))]
@@ -69,7 +69,7 @@
                z)
            tip-y (max 0.0 (- 1.0 (Math/pow (/ (+ y 0.005) 0.015) 2)))
            x (if (> tip-y 0.0)
-               (+ x (* (Math/signum (double x)) (- width 0.5) 0.005 tip-y front))
+               (+ x (* (m/signum x) (- width 0.5) 0.005 tip-y front))
                x)]
        [x y z]))
    verts))
@@ -83,7 +83,7 @@
            lip-y (max 0.0 (- 1.0 (Math/pow (/ (+ y 0.035) 0.015) 2)))
            lip-x (max 0.0 (- 1.0 (Math/pow (/ x 0.03) 2)))]
        (if (and (> lip-y 0.0) (> lip-x 0.0) (> front 0.0))
-         (let [x (+ x (* (Math/signum (double x)) (- width 0.5) 0.005 lip-y front))
+         (let [x (+ x (* (m/signum x) (- width 0.5) 0.005 lip-y front))
                thickness (* (+ upper-lip-thickness lower-lip-thickness) 0.5)
                z (+ z (* (- thickness 0.5) 0.004 lip-y lip-x front))]
            [x y z])

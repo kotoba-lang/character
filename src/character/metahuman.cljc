@@ -66,7 +66,7 @@
                      (let [sag (* age 0.005 (max 0.0 (- 1.0 (Math/pow (/ (+ y 0.07) 0.03) 2))))
                            y (- y sag)
                            jowl-x (/ (max 0.0 (- (Math/abs (double x)) 0.04)) 0.04)
-                           x (+ x (* (Math/signum (double x)) sag 0.3 (max 0.0 (- 1.0 jowl-x))))]
+                           x (+ x (* (m/signum x) sag 0.3 (max 0.0 (- 1.0 jowl-x))))]
                        [x y])
                      [x y])
              nl-x (Math/abs (double (- (Math/abs (double x)) 0.025)))

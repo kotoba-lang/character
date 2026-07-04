@@ -7,7 +7,8 @@
             [character.hair-gen :as hair-gen]
             [character.metahuman :as metahuman]
             [character.control-rig :as control-rig]
-            [character.anim-blueprint :as anim-blueprint]))
+            [character.anim-blueprint :as anim-blueprint]
+            [character.space :as space]))
 
 (deftest namespace-loads
   (testing "the restored CLJC namespace loads"
@@ -35,3 +36,41 @@
   (is (some? metahuman/facs-names))
   (is (some? (control-rig/metahuman-face-rig)))
   (is (some? (anim-blueprint/metahuman-default))))
+
+;; ---------------------------------------------------------------------------
+;; ADR-0048 §1 — generate-character-tagged (additive; generate-character
+;; itself is unchanged, asserted below)
+;; ---------------------------------------------------------------------------
+
+(deftest generate-character-unchanged-by-the-tagged-addition
+  (testing "generate-character's own output shape (bare [x y z] vectors) is
+            byte-for-byte identical before/after adding generate-character-tagged"
+    (let [def1 (params/default-character-def)
+          mesh (character/generate-character def1)]
+      (is (every? vector? (map :position (:vertices (first (:parts mesh))))))
+      (is (not (map? (:position (first (:vertices (first (:parts mesh)))))))))))
+
+(deftest generate-character-tagged-wraps-every-position
+  (let [def1 (params/default-character-def)
+        tagged-mesh (character/generate-character-tagged (params/default-character-def))]
+    (testing "same part/material/index shape as generate-character"
+      (is (= (mapv :name (:parts (character/generate-character def1)))
+             (mapv :name (:parts tagged-mesh)))))
+    (testing "every vertex position is now a tagged point, not a bare vector"
+      (doseq [part (:parts tagged-mesh)
+              v (:vertices part)]
+        (is (map? (:position v)))
+        (is (contains? #{:head-local :world} (:space (:position v))))))
+    (testing "head/eyes/eyebrows/hair are tagged :head-local, body/clothing :world"
+      (doseq [part (:parts tagged-mesh)]
+        (is (= (character/part-space (:name part)) (:space part)))
+        (is (every? #(= (:space part) (:space (:position %))) (:vertices part)))))
+    (testing "head-local part positions are xyz-readable as :head-local, throw as :world"
+      (let [head-part (first (filter #(= "head" (:name %)) (:parts tagged-mesh)))
+            pos (:position (first (:vertices head-part)))]
+        (is (vector? (space/xyz :head-local pos)))
+        (is (thrown? #?(:clj clojure.lang.ExceptionInfo :cljs js/Error) (space/xyz :world pos)))))
+    (testing "body part positions are tagged :world"
+      (let [body-part (first (filter #(= "body" (:name %)) (:parts tagged-mesh)))
+            pos (:position (first (:vertices body-part)))]
+        (is (vector? (space/xyz :world pos)))))))

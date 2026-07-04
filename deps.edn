@@ -1,4 +1,9 @@
 {:paths ["src" "test"]
+ ;; kotoba-lang/spec: ADR-0048 §1 (com-junkawasaki/root) coordinate-space-
+ ;; safety convention (`character.space`) asserts tagged-point `:space` via
+ ;; `kotoba.lang.spec/validate` — the org's portable (kotoba-WASM-safe),
+ ;; zero-third-party-dep data-spec layer, not clojure.spec/malli.
+ :deps {io.github.kotoba-lang/spec {:local/root "../spec"}}
  :aliases {:test {:extra-paths ["test"]
                   :extra-deps {io.github.cognitect-labs/test-runner
                                {:git/tag "v0.5.1" :git/sha "dfb30dd"}}

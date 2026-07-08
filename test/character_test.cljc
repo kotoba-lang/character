@@ -12,7 +12,7 @@
 
 (deftest namespace-loads
   (testing "the restored CLJC namespace loads"
-    (is (some? (the-ns 'character)))))
+    (is (some? (find-ns 'character)))))
 
 (deftest test-generate-default-character
   (let [def1 (params/default-character-def)

@@ -6,7 +6,7 @@
   `anim_blueprint.rs` (deleted in kotoba-lang/kami-engine PR #82) as
   part of the clj-wgsl migration (ADR-2607010930, com-junkawasaki/root)."
   (:refer-clojure :exclude [update])
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (defn- anim-param [name default]
   {:name name :param-type (if (str/starts-with? name "is_") :bool :float)

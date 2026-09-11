@@ -80,5 +80,5 @@ those six modules given the size of this restoration.
 ## Develop
 
 ```bash
-clojure -M:test
+kbb -M:test
 ```

@@ -2,7 +2,7 @@
   "Ported 1:1 from the deleted kami-character crate's `dna.rs`
   `#[cfg(test)] mod tests`, including the synthetic-DNA binary
   fixture builder."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [character.bin :as bin]
             [character.dna :as dna]))
 

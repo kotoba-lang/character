@@ -1,7 +1,7 @@
 (ns character-test
   "Tests ported 1:1 from the deleted kami-character crate's `lib.rs`
   `#[cfg(test)] mod tests`, plus the namespace-loads smoke test."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [character :as character]
             [character.params :as params]
             [character.hair-gen :as hair-gen]

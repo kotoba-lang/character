@@ -2,7 +2,7 @@
   "Supplementary sanity tests for `character.base-mesh` — the Rust
   `base_mesh.rs` had no `#[cfg(test)]` block to port 1:1, so these
   cover the module's public surface directly."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [character.base-mesh :as base-mesh]
             [character.params :as params]))
 

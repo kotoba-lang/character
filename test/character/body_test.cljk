@@ -1,7 +1,7 @@
 (ns character.body-test
   "Supplementary sanity tests for `character.body` — the Rust
   `body.rs` had no `#[cfg(test)]` block to port 1:1."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [character.body :as body]
             [character.params :as params]))
 

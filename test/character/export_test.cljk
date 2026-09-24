@@ -1,7 +1,7 @@
 (ns character.export-test
   "Ported 1:1 from the deleted kami-character crate's `export.rs`
   `#[cfg(test)] mod tests`."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [character :as character]
             [character.export :as export]
             [character.params :as params]))

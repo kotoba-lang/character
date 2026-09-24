@@ -1,7 +1,7 @@
 (ns character.control-rig-test
   "Ported 1:1 from the deleted kami-character crate's `control_rig.rs`
   `#[cfg(test)] mod tests`."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [character.control-rig :as control-rig]))
 
 (deftest test-face-rig-creation

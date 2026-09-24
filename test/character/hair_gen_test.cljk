@@ -1,7 +1,7 @@
 (ns character.hair-gen-test
   "Ported 1:1 from the deleted kami-character crate's `hair_gen.rs`
   `#[cfg(test)] mod tests`."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [character.hair-gen :as hair-gen]
             [character.groom :as groom]))
 

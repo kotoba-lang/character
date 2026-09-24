@@ -1,6 +1,6 @@
 (ns character.space-test
   "Tests for the ADR-0048 §1 coordinate-space-safety convention."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [character.space :as space]))
 
 (defn- approx= [a b] (< (Math/abs (double (- a b))) 1e-9))

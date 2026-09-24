@@ -8,7 +8,7 @@
   in a browser. This JVM test can't reproduce the cljs failure directly (that
   needs an actual cljs runtime), but it pins `character.math/signum`'s
   intended semantics so the fix doesn't silently regress."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [character.math :as m]))
 
 (deftest signum-test

@@ -1,7 +1,7 @@
 (ns character.blendshape-test
   "Supplementary sanity tests for `character.blendshape` — the Rust
   `blendshape.rs` had no `#[cfg(test)]` block to port 1:1."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [character.blendshape :as blendshape]
             [character.base-mesh :as base-mesh]
             [character.params :as params]))

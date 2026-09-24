@@ -1,7 +1,7 @@
 (ns character.hair-test
   "Supplementary sanity tests for `character.hair` — the Rust
   `hair.rs` had no `#[cfg(test)]` block to port 1:1."
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [character.hair :as hair]
             [character.params :as params]))
 

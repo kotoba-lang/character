@@ -18,14 +18,14 @@
       (try
         (space/xyz :world pt)
         (is false "expected an exception")
-        (catch #?(:clj clojure.lang.ExceptionInfo :cljs js/Error) e
+        (catch js/Error e
           (let [data (ex-data e)]
             (is (= :world (:expected data)))
             (is (= :head-local (:actual data)))))))))
 
 (deftest xyz-throws-on-non-tagged-value
   (testing "a bare vector (no :space/:xyz) is rejected, not silently accepted"
-    (is (thrown? #?(:clj clojure.lang.ExceptionInfo :cljs js/Error)
+    (is (thrown? js/Error
                  (space/xyz :world [1.0 2.0 3.0])))))
 
 (deftest head-local->world-translates
@@ -44,7 +44,7 @@
 (deftest head-local->world-rejects-wrong-input-space
   (testing "converting a :world point as if it were :head-local throws (no silent
             mis-conversion)"
-    (is (thrown? #?(:clj clojure.lang.ExceptionInfo :cljs js/Error)
+    (is (thrown? js/Error
                  (space/head-local->world [0.0 0.0 0.0] (space/point :world [1.0 2.0 3.0]))))))
 
 ;; ── part-level tagging ──────────────────────────────────────────────────
@@ -71,7 +71,7 @@
 
 (deftest untag-part-throws-on-wrong-expected-space
   (let [tagged (space/tag-part :head-local sample-part)]
-    (is (thrown? #?(:clj clojure.lang.ExceptionInfo :cljs js/Error)
+    (is (thrown? js/Error
                  (space/untag-part :world tagged)))))
 
 (deftest retag-part-converts-and-relabels

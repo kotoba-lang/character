@@ -69,7 +69,7 @@
       (let [head-part (first (filter #(= "head" (:name %)) (:parts tagged-mesh)))
             pos (:position (first (:vertices head-part)))]
         (is (vector? (space/xyz :head-local pos)))
-        (is (thrown? #?(:clj clojure.lang.ExceptionInfo :cljs js/Error) (space/xyz :world pos)))))
+        (is (thrown? js/Error (space/xyz :world pos)))))
     (testing "body part positions are tagged :world"
       (let [body-part (first (filter #(= "body" (:name %)) (:parts tagged-mesh)))
             pos (:position (first (:vertices body-part)))]

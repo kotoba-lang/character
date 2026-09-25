@@ -11,7 +11,8 @@
 
   A read cursor is `{:data [byte ...] :pos int}`. Read functions take
   and return the cursor. Write functions append bytes to a plain
-  output vector.")
+  output vector."
+  (:require [kotoba.bytes :as kbytes]))
 
 ;; ── IEEE754 f32 <-> bits (platform divergence) ───
 
@@ -64,7 +65,7 @@
       ["" c']
       (let [{:keys [data pos]} c'
             bytes (subvec data pos (+ pos len))
-            s #?(:clj (String. (byte-array (map unchecked-byte bytes)) "UTF-8")
+            s #?(:clj (kbytes/utf8-string (byte-array (map unchecked-byte bytes)))
                  :cljs (js/decodeURIComponent
                         (apply str (map (fn [b] (str "%" (.toUpperCase (.padStart (.toString b 16) 2 "0")))) bytes))))]
         [s (assoc c' :pos (+ pos len))]))))
@@ -117,7 +118,7 @@
   [c]
   (let [[len c'] (read-u32-le c)]
     (let [[bytes c2] (read-bytes c' len)
-          s #?(:clj (String. (byte-array (map unchecked-byte bytes)) "UTF-8")
+          s #?(:clj (kbytes/utf8-string (byte-array (map unchecked-byte bytes)))
                :cljs (js/decodeURIComponent
                       (apply str (map (fn [b] (str "%" (.toUpperCase (.padStart (.toString b 16) 2 "0")))) bytes))))]
       [s c2])))
@@ -153,7 +154,7 @@
 (defn write-bytes [out bytes] (into out bytes))
 
 (defn str->bytes [s]
-  #?(:clj (vec (map #(bit-and (int %) 0xFF) (.getBytes (str s) "UTF-8")))
+  #?(:clj (vec (map #(bit-and (int %) 0xFF) (kbytes/utf8-bytes (str s))))
      :cljs (vec (js/Array.from (js/TextEncoder.) s))))
 
 (defn write-string-le [out s]
